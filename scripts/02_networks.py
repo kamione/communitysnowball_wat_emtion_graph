@@ -5,6 +5,7 @@ import altair as alt
 import numpy as np
 import networkx as nx
 import random
+import researchpy
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -19,6 +20,7 @@ from netgraph import Graph
 from matplotlib import font_manager
 from src.python.core import wcloud
 from src.python.utils import utils
+
 
 # Add font family: Source Han Sans HC
 font_files = font_manager.findSystemFonts(fontpaths=str(Path('fonts')))
@@ -596,14 +598,20 @@ for col_name in cols:
     print("Happy")
     t, p = ttest_ind(
         happy1_nodes_rating[col_name], happy2_nodes_rating[col_name])
+    print(researchpy.ttest(
+        happy1_nodes_rating[col_name], happy2_nodes_rating[col_name]))
     print(f'{t}, {p}')
     print("Surprise")
     t, p = ttest_ind(
         surprise1_nodes_rating[col_name], surprise2_nodes_rating[col_name])
+    print(researchpy.ttest(
+        surprise1_nodes_rating[col_name], surprise2_nodes_rating[col_name]))
     print(f'{t}, {p}')
     print("Pathetic")
     t, p = ttest_ind(
         pathatic1_nodes_rating[col_name], pathatic2_nodes_rating[col_name])
+    print(researchpy.ttest(
+        pathatic1_nodes_rating[col_name], pathatic2_nodes_rating[col_name]))
     print(f'{t}, {p}')
 
 
