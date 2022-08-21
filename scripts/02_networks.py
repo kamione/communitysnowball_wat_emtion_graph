@@ -70,12 +70,18 @@ data_cleaned = (data
 
 # check if unique number of cues is correct
 n_cues = data_cleaned['cue'].nunique()
-n_participant = data_cleaned['id'].nunique()
+n_participant = data_cleaned['participant_id'].nunique() # total partipants
+n_responses = data_cleaned['id'].nunique() # total responses
 # data_cleaned.columns
 # data_cleaned['keypress_rt3']
 
 # get summary statistics
-data_cleaned.groupby('gender').size()
+data_by_partid_gender = data_cleaned.groupby(['participant_id', 'gender']).size()
+# female and male number
+data_by_partid_gender.groupby(['gender']).size()
+# average response
+np.mean(data_by_partid_gender)
+
 data_cleaned['age'].mean()
 data_cleaned['age'].std()
 data_cleaned.groupby('gender')['age'].mean()
