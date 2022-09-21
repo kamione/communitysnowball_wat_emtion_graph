@@ -1,4 +1,6 @@
 # Environment ------------------------------------------------------------------
+from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import silhouette_score, adjusted_rand_score
 from sklearn.cluster import AgglomerativeClustering
 from networkx.algorithms import similarity
 import pandas as pd
@@ -17,6 +19,7 @@ from statsmodels.formula.api import ols
 from statsmodels.stats.anova import anova_lm
 from statsmodels.stats.multicomp import MultiComparison
 from src.python.utils import utils
+import itertools
 
 font_files = font_manager.findSystemFonts(fontpaths=str(Path('fonts')))
 for font_file in font_files:
@@ -75,32 +78,136 @@ emotional_words_pd = emotional_words_pd.astype('float')
 emotional_words_pd.to_csv(
     Path('outputs', 'tables', 'emotion_cues_rating.csv'), encoding='big5')
 
-# K-Mean Clustering (Abondoned)
-# sse = []
-# k_candidates = range(1, 11)
-# for k in k_candidates:
-#     k_means = KMeans(random_state=1234, n_clusters=k)
-#     k_means.fit(emotional_words_pd)
-#     sse.append(k_means.inertia_)
-# fig, ax = plt.subplots(figsize=(10, 6))
-# sns.scatterplot(x=k_candidates, y=sse, s=80, color='grey', ax=ax)
-# sns.scatterplot(x=[k_candidates[2]], y=[sse[2]], color=sns_c[3], s=150, ax=ax)
-# sns.lineplot(x=k_candidates, y=sse, alpha=0.5, color='grey', ax=ax)
-# ax.set(title='', ylabel='Sum of Squared Error', xlabel='Number of Clusters')
-# fig.savefig(Path('outputs', 'figs', 'kmeans_screeplot.png'))
-# k_means = KMeans(random_state=1111, n_clusters=3)
-# k_means.fit(emotional_words_pd)
-# cluster = k_means.predict(emotional_words_pd)
-
-# cluster_list = cluster.tolist()
-# cluster1_list = [emotional_words_pd.index[i]
-#                  for i in range(len(cluster_list)) if cluster_list[i] == 0]
-# cluster2_list = [emotional_words_pd.index[i]
-#                  for i in range(len(cluster_list)) if cluster_list[i] == 1]
-# cluster3_list = [emotional_words_pd.index[i]
-#                  for i in range(len(cluster_list)) if cluster_list[i] == 2]
 
 # Hierachical Clustering -------------------------------------------------------
+# loop over combinations of distance and linkage functions
+def plot_dendrogram(
+    df, output_name, y_intercept=None, metric='euclidean', linkage='ward'
+):
+    plt.rcParams['font.family'] = 'Source Han Sans HC'
+    dist = sch.linkage(df, metric=metric, method=linkage)
+    plt.figure(figsize=(10, 7))
+    sch.dendrogram(
+        dist,
+        orientation='top',
+        labels=df.index,
+        distance_sort='descending',
+        show_leaf_counts=True
+    )
+    if y_intercept is not None:
+        plt.axhline(y=y_intercept, c='grey', lw=1, linestyle='dashed')
+    plt.savefig(
+        Path('outputs', 'figs', f'{output_name}_{metric}_{linkage}.png'),
+        dpi=300,
+        bbox_inches='tight'
+    )
+
+    silhouette_coefficients = []
+    for k in range(2, 11):
+        cluster = AgglomerativeClustering(
+            n_clusters=k,
+            affinity=metric,
+            linkage=linkage
+        )
+        cluster.fit(df)
+        score = silhouette_score(df, cluster.labels_)
+        silhouette_coefficients.append(score)
+        plt.figure(figsize=(10, 7))
+
+    plt.bar(range(2, 11), silhouette_coefficients)
+    plt.xlabel('Number of Clusters', fontsize=20)
+    plt.ylabel('Silhoette Coefficients', fontsize=20)
+    plt.savefig(
+        Path('outputs', 'figs',
+             f'{output_name}_{metric}_{linkage}_silhoette.png'),
+        dpi=300,
+        bbox_inches='tight'
+    )
+    plt.close('all')
+
+
+metrics = ['euclidean', 'cityblock']
+methods = ['single', 'complete', 'median',
+           'weighted', 'average', 'centroid', 'ward']
+
+for mm in list(itertools.product(metrics, methods)):
+    try:
+        plot_dendrogram(
+            emotional_words_pd,
+            output_name='cue-emotion_hclust',
+            metric=mm[0],
+            linkage=mm[1]
+        )
+    except:
+        pass
+# all algorithms gave optimal solutions: positive and negative
+
+
+# Affective Features 2 Clusters ------------------------------------------------
+# plot dendrogram
+plt.rcParams['font.family'] = 'Source Han Sans HC'
+dist = sch.linkage(emotional_words_pd, metric='euclidean', method='ward')
+plt.figure(figsize=(10, 7))
+sch.dendrogram(dist,
+               orientation='top',
+               labels=emotional_words_pd.index,
+               distance_sort='descending',
+               show_leaf_counts=True)
+plt.axhline(y=15, c='grey', lw=1, linestyle='dashed')
+plt.savefig(Path('outputs', 'figs', 'cue-emotion_hclust_ward_2clusters.png'),
+            dpi=300, bbox_inches='tight')
+
+# clustering
+cluster = AgglomerativeClustering(n_clusters=2, affinity='euclidean',
+                                  linkage='ward')
+cluster.fit_predict(emotional_words_pd)
+
+cluster1_list = [emotional_words_pd.index[i]
+                 for i in range(len(cluster.labels_)) if cluster.labels_[i] == 0]
+cluster2_list = [emotional_words_pd.index[i]
+                 for i in range(len(cluster.labels_)) if cluster.labels_[i] == 1]
+
+cluster1_list
+cluster2_list
+
+cols = emotional_words_pd.columns
+# add memberships to the emotion dataframe
+emotional_words_pd_copy = emotional_words_pd.copy()
+emotional_words_pd_copy['group'] = cluster.labels_
+
+# make sure all variable are numeric
+emotional_words_pd_copy[cols] = emotional_words_pd_copy[cols].apply(
+    pd.to_numeric, errors='coerce')
+
+cluster1_rating_avg = (emotional_words_pd_copy
+                       .query('cues == @cluster1_list')
+                       .mean(axis=0))
+cluster1_rating_sd = (emotional_words_pd_copy
+                      .query('cues == @cluster1_list')
+                      .std(axis=0))
+
+cluster2_rating_avg = (emotional_words_pd_copy
+                       .query('cues == @cluster2_list')
+                       .mean(axis=0))
+cluster2_rating_sd = (emotional_words_pd_copy
+                      .query('cues == @cluster2_list')
+                      .std(axis=0))
+
+# compare 2 clusters
+for col_name in cols:
+
+    print(col_name)
+    model = ols(f'{col_name} ~ C(group)', emotional_words_pd_copy).fit()
+    es = anova_lm(model, typ=1)
+    print(utils.anova_table(es))
+    comparison = MultiComparison(
+        emotional_words_pd_copy[f'{col_name}'], emotional_words_pd_copy['group'])
+    comparison_results = comparison.tukeyhsd()
+    print(comparison_results.summary())
+
+
+# Affective Features 3 Clusters ------------------------------------------------
+# plot dendrogram
 plt.rcParams['font.family'] = 'Source Han Sans HC'
 dist = sch.linkage(emotional_words_pd, metric='euclidean', method='ward')
 plt.figure(figsize=(10, 7))
@@ -110,9 +217,10 @@ sch.dendrogram(dist,
                distance_sort='descending',
                show_leaf_counts=True)
 plt.axhline(y=5, c='grey', lw=1, linestyle='dashed')
-plt.savefig(Path('outputs', 'figs', 'cue-emotion_hclust.png'),
+plt.savefig(Path('outputs', 'figs', 'cue-emotion_hclust_ward_2clusters.png.png'),
             dpi=300, bbox_inches='tight')
 
+# clustering
 cluster = AgglomerativeClustering(n_clusters=3, affinity='euclidean',
                                   linkage='ward')
 cluster.fit_predict(emotional_words_pd)
@@ -128,42 +236,33 @@ cluster1_list
 cluster2_list
 cluster3_list
 
-# from sklearn.metrics import silhouette_score
-# silhouette_coefficients = []
-# for k in range(2, 11):
-#    kmeans = KMeans(n_clusters=k)
-#    kmeans.fit(emotional_words_pd)
-#    score = silhouette_score(emotional_words_pd, kmeans.labels_)
-#    silhouette_coefficients.append(score)
-
-# Affective Features -----------------------------------------------------------
-
 cols = emotional_words_pd.columns
 # add memberships to the emotion dataframe
-emotional_words_pd['group'] = cluster.labels_
+emotional_words_pd_copy = emotional_words_pd.copy()
+emotional_words_pd_copy['group'] = cluster.labels_
 
 # make sure all variable are numeric
-emotional_words_pd[cols] = emotional_words_pd[cols].apply(
+emotional_words_pd_copy[cols] = emotional_words_pd_copy[cols].apply(
     pd.to_numeric, errors='coerce')
 
-cluster1_rating_avg = (emotional_words_pd
+cluster1_rating_avg = (emotional_words_pd_copy
                        .query('cues == @cluster1_list')
                        .mean(axis=0))
-cluster1_rating_sd = (emotional_words_pd
+cluster1_rating_sd = (emotional_words_pd_copy
                       .query('cues == @cluster1_list')
                       .std(axis=0))
 
-cluster2_rating_avg = (emotional_words_pd
+cluster2_rating_avg = (emotional_words_pd_copy
                        .query('cues == @cluster2_list')
                        .mean(axis=0))
-cluster2_rating_sd = (emotional_words_pd
+cluster2_rating_sd = (emotional_words_pd_copy
                       .query('cues == @cluster2_list')
                       .std(axis=0))
 
-cluster3_rating_avg = (emotional_words_pd
+cluster3_rating_avg = (emotional_words_pd_copy
                        .query('cues == @cluster3_list')
                        .mean(axis=0))
-cluster3_rating_sd = (emotional_words_pd
+cluster3_rating_sd = (emotional_words_pd_copy
                       .query('cues == @cluster3_list')
                       .std(axis=0))
 
@@ -171,10 +270,88 @@ cluster3_rating_sd = (emotional_words_pd
 for col_name in cols:
 
     print(col_name)
-    model = ols(f'{col_name} ~ C(group)', emotional_words_pd).fit()
+    model = ols(f'{col_name} ~ C(group)', emotional_words_pd_copy).fit()
     es = anova_lm(model, typ=1)
     print(utils.anova_table(es))
     comparison = MultiComparison(
-        emotional_words_pd[f'{col_name}'], emotional_words_pd['group'])
+        emotional_words_pd_copy[f'{col_name}'], emotional_words_pd_copy['group'])
+    comparison_results = comparison.tukeyhsd()
+    print(comparison_results.summary())
+
+
+# Standardization affect results? ----------------------------------------------
+scaler = StandardScaler()
+emotional_words_pd_std = scaler.fit_transform(emotional_words_pd.copy())
+
+plt.rcParams['font.family'] = 'Source Han Sans HC'
+dist = sch.linkage(emotional_words_pd_std, metric='euclidean', method='ward')
+plt.figure(figsize=(10, 7))
+sch.dendrogram(dist,
+               orientation='top',
+               labels=emotional_words_pd.index,
+               distance_sort='descending',
+               show_leaf_counts=True)
+plt.savefig(Path('outputs', 'figs', 'cue-emotion_hclust_std_ward.png'),
+            dpi=300, bbox_inches='tight')
+
+# clustering
+cluster = AgglomerativeClustering(n_clusters=3, affinity='euclidean',
+                                  linkage='ward')
+cluster.fit_predict(emotional_words_pd_std)
+
+cluster1_list = [emotional_words_pd.index[i]
+                 for i in range(len(cluster.labels_)) if cluster.labels_[i] == 0]
+cluster2_list = [emotional_words_pd.index[i]
+                 for i in range(len(cluster.labels_)) if cluster.labels_[i] == 1]
+cluster3_list = [emotional_words_pd.index[i]
+                 for i in range(len(cluster.labels_)) if cluster.labels_[i] == 2]
+
+cluster1_list
+cluster2_list
+cluster3_list
+
+cols = emotional_words_pd.columns
+# add memberships to the emotion dataframe
+emotional_words_pd_copy = pd.DataFrame(
+    emotional_words_pd_std,
+    columns=['valence_mean', 'arousal_mean',
+             'dominance_mean', 'concreteness_mean']
+)
+emotional_words_pd_copy['group'] = cluster.labels_
+
+# make sure all variable are numeric
+emotional_words_pd_copy[cols] = emotional_words_pd_copy[cols].apply(
+    pd.to_numeric, errors='coerce')
+
+cluster1_rating_avg = (emotional_words_pd_copy
+                       .query('cues == @cluster1_list')
+                       .mean(axis=0))
+cluster1_rating_sd = (emotional_words_pd_copy
+                      .query('cues == @cluster1_list')
+                      .std(axis=0))
+
+cluster2_rating_avg = (emotional_words_pd_copy
+                       .query('cues == @cluster2_list')
+                       .mean(axis=0))
+cluster2_rating_sd = (emotional_words_pd_copy
+                      .query('cues == @cluster2_list')
+                      .std(axis=0))
+
+cluster3_rating_avg = (emotional_words_pd_copy
+                       .query('cues == @cluster3_list')
+                       .mean(axis=0))
+cluster3_rating_sd = (emotional_words_pd_copy
+                      .query('cues == @cluster3_list')
+                      .std(axis=0))
+
+# compare 3 clusters
+for col_name in cols:
+
+    print(col_name)
+    model = ols(f'{col_name} ~ C(group)', emotional_words_pd_copy).fit()
+    es = anova_lm(model, typ=1)
+    print(utils.anova_table(es))
+    comparison = MultiComparison(
+        emotional_words_pd_copy[f'{col_name}'], emotional_words_pd_copy['group'])
     comparison_results = comparison.tukeyhsd()
     print(comparison_results.summary())
