@@ -282,6 +282,23 @@ for col_name in cols:
 # Standardization affect results? ----------------------------------------------
 scaler = StandardScaler()
 emotional_words_pd_std = scaler.fit_transform(emotional_words_pd.copy())
+emotional_words_pd_std = pd.DataFrame(
+    emotional_words_pd_std,
+    columns=['valence_mean', 'arousal_mean',
+             'dominance_mean', 'concreteness_mean']
+)
+
+for mm in list(itertools.product(metrics, methods)):
+    try:
+        plot_dendrogram(
+            emotional_words_pd_std,
+            output_name='cue-emotion_hclust_std',
+            metric=mm[0],
+            linkage=mm[1]
+        )
+    except:
+        pass
+
 
 plt.rcParams['font.family'] = 'Source Han Sans HC'
 dist = sch.linkage(emotional_words_pd_std, metric='euclidean', method='ward')
