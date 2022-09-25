@@ -4,6 +4,7 @@ import os
 import altair as alt
 import numpy as np
 import networkx as nx
+import networkx.algorithms.community as nx_comm
 import random
 import researchpy
 import pandas as pd
@@ -70,13 +71,15 @@ data_cleaned = (data
 
 # check if unique number of cues is correct
 n_cues = data_cleaned['cue'].nunique()
-n_participant = data_cleaned['participant_id'].nunique() # total partipants
-n_responses = data_cleaned['id'].nunique() # total responses
+n_participant = data_cleaned['participant_id'].nunique()  # total partipants
+n_responses = data_cleaned['id'].nunique()  # total responses
 # data_cleaned.columns
 # data_cleaned['keypress_rt3']
 
 # get summary statistics
-data_by_partid_gender = data_cleaned.groupby(['participant_id', 'gender']).size()
+data_by_partid_gender = data_cleaned.groupby(
+    ['participant_id', 'gender']
+).size()
 # female and male number
 data_by_partid_gender.groupby(['gender']).size()
 # average response
@@ -150,7 +153,7 @@ save(dist_combined_plot, str(Path('outputs', 'figs', 'dist_combined_plot.png')))
 
 
 # Word Association Network Construction ----------------------------------------
-# R123: Combine Response R1, R2, and R3
+# R123: combine response R1, R2, and R3
 r123_wide = data_cleaned.filter(regex='created_year|cue|r1|r2|r3')
 r123_long = pd.melt(r123_wide, id_vars=['cue', 'created_year'],
                     value_vars=['r1', 'r2', 'r3'], value_name='R123')
@@ -194,7 +197,6 @@ print(f'original graph: nodes - {n_nodes}, edges - {n_edges}')
 
 
 # Emotion Sub-Network Construction ---------------------------------------------
-
 # load word list
 emotion_list = pd.read_csv(
     Path('data', 'raw', 'cue_list_updated.csv'), encoding='big5')
@@ -204,16 +206,18 @@ n_emotions = len(emotion_stacked_list)
 n_emotions
 
 # create edges dataframe only from emotional words
-r123_edges_emotions = (r123_long
-                       .groupby(['cue', 'R123'])
-                       .agg({'R123': 'size'})
-                       .rename({'R123': 'Weight'}, axis=1)
-                       .reset_index()
-                       .query('cue == @emotion_stacked_list')
-                       )
+r123_edges_emotions = (
+    r123_long
+    .groupby(['cue', 'R123'])
+    .agg({'R123': 'size'})
+    .rename({'R123': 'Weight'}, axis=1)
+    .reset_index()
+    .query('cue == @emotion_stacked_list')
+)
 
 count = r123_edges_emotions["cue"].value_counts()
 np.mean(count)
+
 dist_cue_n_responses = alt.Chart(r123_edges_emotions).mark_bar().encode(
     x=alt.X("cue:N", title='Emotional Words', sort='-y'),
     y=alt.Y('count()', title='Number of Responses'),
@@ -231,7 +235,6 @@ dist_cue_n_responses = alt.Chart(r123_edges_emotions).mark_bar().encode(
 )
 save(dist_cue_n_responses, str(Path('outputs', 'figs', 'dist_cue_n_responses.pdf')))
 save(dist_cue_n_responses, str(Path('outputs', 'figs', 'dist_cue_n_responses.png')))
-
 
 # get the list of emotion and thier neighbours
 select_nodes = list()
@@ -268,6 +271,9 @@ print(common_top)
 
 # graphical characteristics
 
+
+# Marcoscopic Level ------------------------------------------------------------
+# here we examined the emotion graph's characteristics compared to the full graph
 nx.density(g_cleaned_strong)
 nx.density(emotion_subgraph)
 
@@ -300,9 +306,11 @@ np.mean(Pairs)
 nx.average_shortest_path_length(emotion_subgraph)
 
 
-# Community Graph Visualization ------------------------------------------------
-# visualize the emotion subgraph with emphasis on hubs
-# get the communities using rb_pots
+# Mesoscopic Level -------------------------------------------------------------
+# here we examined community structure of emotion graph
+
+# get the communities using rb_pots (for weighted and directed graphs)
+#
 list_community = list()
 list_communityitems = list()
 for ith_iter in range(10000):
@@ -347,10 +355,12 @@ for i in best_n_indices[1:]:
 
     for ith_list in range(best_n_community):
         for ith_word in range(len(tmp_list_reordered[ith_list])):
-            index = membership_dataframe.index[membership_dataframe['node'] == tmp_list_reordered[ith_list][ith_word]].tolist()[
-                0]
-            membership_dataframe.at[index,
-                                    ith_list] = membership_dataframe.at[index, ith_list] + 1
+            index = membership_dataframe.index[
+                membership_dataframe['node'] ==
+                tmp_list_reordered[ith_list][ith_word]
+            ].tolist()[0]
+            membership_dataframe.at[index, ith_list] = \
+                membership_dataframe.at[index, ith_list] + 1
 
 membership_dataframe_2 = membership_dataframe.set_index('node')
 
@@ -358,6 +368,53 @@ best_community = [[] for _ in range(best_n_community)]
 
 for index, row in membership_dataframe_2.iterrows():
     best_community[np.argmax(row.values.tolist())].append(index)
+
+
+# modularity
+g_emotion_modularity = nx_comm.modularity(
+    emotion_subgraph, best_community, weight='weight'
+)
+
+# permutate the edge weight to make sure our results are robust
+list_modularity = list()
+for ith_iter in range(10000):
+    # general resampled graph
+    _edgelist = nx.to_pandas_edgelist(emotion_subgraph)
+    _edgelist['Weight'] = np.random.RandomState(
+        seed=ith_iter
+    ).permutation(
+        _edgelist['Weight'].values
+    )
+    _emotion_resampled_subgraph = nx.from_pandas_edgelist(
+        _edgelist,
+        source='source',
+        target='target',
+        edge_attr='Weight',
+        create_using=nx.DiGraph()
+    )
+    _memberships = algorithms.rb_pots(
+        _emotion_resampled_subgraph,
+        weights='Weight'
+    )
+    _modularity = nx_comm.modularity(
+        _emotion_resampled_subgraph, _memberships.communities, weight='weight'
+    )
+
+    # store result
+    list_modularity.append(_modularity)
+
+perm_res = [x > g_emotion_modularity for x in list_modularity]
+
+perm_p = np.sum(perm_res)/10000
+
+# plot permutation plot
+plt.figure(figsize=(10, 5))
+plt.hist(list_modularity, bins=40, color='grey')
+plt.axvline(x=g_emotion_modularity, color='red')
+plt.text(0.24, 700, '$p_{permutation}$=0.0011', fontsize=12)
+plt.ylabel('Frequency')
+plt.xlabel('Modularity Q-value')
+plt.savefig(Path('outputs', 'figs', 'modularity_permutation.pdf'))
 
 # print emotion labels of each community
 for i in range(best_n_community):
@@ -432,20 +489,6 @@ plt.savefig(Path('outputs', 'figs', 'cue-emotion_communities_subgraph.png'),
             dpi=300, bbox_inches='tight')
 
 
-graph_data = [(0, 1), (1, 2), (2, 0)]  # edge list
-# graph_data = [(0, 1, 0.2), (1, 2, -0.4), (2, 0, 0.7)] # edge list with weights
-# graph_data = np.random.rand(10, 10) # full rank matrix
-# graph_data = networkx.karate_club_graph() # networkx Graph/DiGraph objects
-# graph_data = igraph.Graph.Famous('Zachary') # igraph Graph objects
-
-# Create a non-interactive plot:
-fig, ax = plt.subplots(1, 1, figsize=(12, 10))
-Graph(graph_data)
-fig.set_facecolor('#FCFAF2')
-plt.savefig(Path('outputs', 'figs', 'testing.png'),
-            dpi=300, bbox_inches='tight')
-
-
 node_position = [g_emotion_nodes.index(x) for x in common_top]
 node_sizes = list()
 for ith in range(len(g_emotion_nodes)):
@@ -488,7 +531,10 @@ plt.savefig(Path('outputs', 'figs', 'cue-emotion_hubs_subgraph.png'),
 emotional_words_pd = pd.read_csv(
     Path('outputs', 'tables', 'emotion_cues_rating.csv'), encoding='big5')
 
-# microscopic
+
+# Microscopic Level ------------------------------------------------------------
+# here we examined some common pairs of synonymic emotion words in Cantonese
+# including happiness, surprise and pathatic
 subgraph_node = dict(happy1='開心',
                      happy2='快樂',
                      surprise1='驚訝',
