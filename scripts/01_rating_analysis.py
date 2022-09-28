@@ -205,6 +205,35 @@ for col_name in cols:
     comparison_results = comparison.tukeyhsd()
     print(comparison_results.summary())
 
+hclust_2_long = pd.melt(
+    emotional_words_pd_copy,
+    id_vars='group',
+    value_vars=['valence_mean', 'arousal_mean',
+                'dominance_mean', 'concreteness_mean']
+).replace(
+    dict(
+        variable={
+            'valence_mean': 'Valence',
+            'arousal_mean': 'Arousal',
+            'dominance_mean': 'Dominance',
+            'concreteness_mean': 'Concreteness'
+        },
+        group={
+            0: 'Cluster B',
+            1: 'Cluster A'
+        }
+    )
+)
+hclust_2_long['group'] = hclust_2_long['group'].astype(
+    "category").cat.set_categories(['Cluster A', 'Cluster B'], ordered=True)
+
+plt.figure(figsize=(6, 3))
+fig = sns.barplot(data=hclust_2_long, x='variable', y='value', hue='group')
+plt.xlabel('')
+plt.ylabel('Value')
+fig.legend_.set_title(None)
+plt.savefig(Path('outputs', 'figs', 'emotion_2clusters.png'),
+            dpi=300, bbox_inches='tight')
 
 # Affective Features 3 Clusters ------------------------------------------------
 # plot dendrogram
@@ -217,7 +246,7 @@ sch.dendrogram(dist,
                distance_sort='descending',
                show_leaf_counts=True)
 plt.axhline(y=5, c='grey', lw=1, linestyle='dashed')
-plt.savefig(Path('outputs', 'figs', 'cue-emotion_hclust_ward_2clusters.png.png'),
+plt.savefig(Path('outputs', 'figs', 'cue-emotion_hclust_ward_2clusters.png'),
             dpi=300, bbox_inches='tight')
 
 # clustering
@@ -240,6 +269,7 @@ cols = emotional_words_pd.columns
 # add memberships to the emotion dataframe
 emotional_words_pd_copy = emotional_words_pd.copy()
 emotional_words_pd_copy['group'] = cluster.labels_
+
 
 # make sure all variable are numeric
 emotional_words_pd_copy[cols] = emotional_words_pd_copy[cols].apply(
@@ -277,6 +307,38 @@ for col_name in cols:
         emotional_words_pd_copy[f'{col_name}'], emotional_words_pd_copy['group'])
     comparison_results = comparison.tukeyhsd()
     print(comparison_results.summary())
+
+# plot 3 cluster solutins
+hclust_3_long = pd.melt(
+    emotional_words_pd_copy,
+    id_vars='group',
+    value_vars=['valence_mean', 'arousal_mean',
+                'dominance_mean', 'concreteness_mean']
+).replace(
+    dict(
+        variable={
+            'valence_mean': 'Valence',
+            'arousal_mean': 'Arousal',
+            'dominance_mean': 'Dominance',
+            'concreteness_mean': 'Concreteness'
+        },
+        group={
+            0: 'Cluster A',
+            1: 'Cluster B',
+            2: 'Cluster C'
+        }
+    )
+)
+hclust_3_long['group'] = hclust_3_long['group'].astype(
+    "category").cat.set_categories(['Cluster A', 'Cluster B', 'Cluster C'], ordered=True)
+
+plt.figure(figsize=(6, 3))
+fig = sns.barplot(data=hclust_3_long, x='variable', y='value', hue='group')
+plt.xlabel('')
+plt.ylabel('Value')
+fig.legend_.set_title(None)
+plt.savefig(Path('outputs', 'figs', 'emotion_3clusters.png'),
+            dpi=300, bbox_inches='tight')
 
 
 # Standardization affect results? ----------------------------------------------
