@@ -12,6 +12,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import matplotlib.font_manager as fm
 from scipy.stats import ttest_ind
+from statsmodels.stats.weightstats import ttost_ind
 from altair_saver import save
 from cdlib import algorithms
 from pathlib import Path
@@ -199,7 +200,8 @@ print(f'original graph: nodes - {n_nodes}, edges - {n_edges}')
 # Emotion Sub-Network Construction ---------------------------------------------
 # load word list
 emotion_list = pd.read_csv(
-    Path('data', 'raw', 'cue_list_updated.csv'), encoding='big5')
+    Path('data', 'raw', 'cue_list_updated.csv'), encoding='big5'
+)
 emotion_stacked_list = emotion_list.stack(dropna=True).to_list()
 
 n_emotions = len(emotion_stacked_list)
@@ -665,6 +667,22 @@ for col_name in cols:
     print(researchpy.ttest(
         pathatic1_nodes_rating[col_name], pathatic2_nodes_rating[col_name]))
     print(f'{t}, {p}')
+
+# Equivalence Test
+for col_name in cols:
+    print(col_name)
+    print("Happy")
+    p, low_p, upp_p = ttost_ind(
+        happy1_nodes_rating[col_name], happy2_nodes_rating[col_name],
+        low=-0.5, upp=0.5
+    )
+    print(f'Lower: {low_p}, Upper: {upp_p}')
+    print("Pathetic")
+    p, low_p, upp_p = ttost_ind(
+        pathatic1_nodes_rating[col_name], pathatic2_nodes_rating[col_name],
+        low=-0.5, upp=0.5
+    )
+    print(f'Lower: {low_p}, Upper: {upp_p}')
 
 
 graph_orig = nx.from_pandas_edgelist(df=r123_edges_emotions,
